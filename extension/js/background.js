@@ -28,14 +28,21 @@
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 
- */
+*/
 
 /*jshint eqeqeq:true, forin:true, strict:true */
 /*global chrome, console */
 
+var myURL = "about:blank"; // A default url just in case below code doesn't work
 (function () {
 
   "use strict";
+  chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) { // onUpdated should fire when the selected tab is changed or a link is clicked
+    chrome.tabs.getSelected(null, function (tab) {
+      myURL = tab.url;
+    });
+  });
+
 
   // Constants
   var
@@ -46,6 +53,57 @@
     TYPE_BOOL = 5,
     TYPE_NULL = 6
     ;
+
+  // Assisted-Installers extensions
+  function parseHostField(field) {
+    try {
+      return JSON.parse(field)
+    }
+    catch (e) {
+      console.log("Error parsing field: " + field)
+      return field
+    }
+  }
+
+
+  function parseAssistedMetadataJson(jsonObj) {
+    try {
+      //For Assisted-Install metadata.json file, expand Assisted - Service's specific fields that contain json format strings
+      jsonObj['cluster']['hosts'].forEach(function (host) {
+        host['connectivity'] = parseHostField(host['connectivity'])
+        host['disks_info'] = parseHostField(host['disks_info'])
+        host['images_status'] = parseHostField(host['images_status'])
+        host['validations_info'] = parseHostField(host['validations_info'])
+        host['inventory'] = parseHostField(host['inventory'])
+        host['ntp_sources'] = parseHostField(host['ntp_sources'])
+        host['inventory']['disks'].forEach(function (disk) {
+          disk['smart'] = parseHostField(disk['smart'])
+        })
+      })
+      jsonObj['cluster']['validations_info'] = parseHostField(jsonObj['cluster']['validations_info'])
+    }
+    catch (e) {
+      console.log("Cannot find fields for metadata.json")
+    }
+  }
+
+  function parseExtensions(jsonObj) {
+    if (myURL.endsWith('metadata.json')) {
+      return parseAssistedMetadataJson(jsonObj)
+    }
+  }
+
+
+  function shouldCollapseAssistedMetadataJson(keyName) {
+    return ['flags', 'validations_info', 'image_info', 'smart', 'connectivity', 'ntp_sources'].includes(keyName)
+  }
+  function shouldCollapseByDefaultExtension(keyName) {
+    if (myURL.endsWith('metadata.json')) {
+      return shouldCollapseAssistedMetadataJson(keyName)
+    }
+    return false
+  }
+
 
   // Utility functions
   function removeComments(str) {
@@ -239,6 +297,9 @@
     if (keyName !== false) { // NB: "" is a legal keyname in JSON
       // This kvov must be an object property
       kvov.classList.add('objProp');
+      if (shouldCollapseByDefaultExtension(keyName)) {
+        kvov.classList.add('collapsed');
+      }
       // Create a span for the key name
       keySpan = templates.t_key.cloneNode(false);
       keySpan.textContent = JSON.stringify(keyName).slice(1, -1); // remove quotes
@@ -486,6 +547,7 @@
         // And send it the message to confirm that we're now formatting (so it can show a spinner)
         port.postMessage(['FORMATTING' /*, JSON.stringify(localStorage)*/]);
 
+        parseExtensions(obj)
         // Do formatting
         var html = jsonObjToHTML(obj, jsonpFunctionName);
 
