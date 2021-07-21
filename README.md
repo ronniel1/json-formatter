@@ -1,5 +1,6 @@
 JSON Formatter
 ==============
+**This fork has changed to support Red Hat's Assisted-Installer specific json files**
 
 Chrome extension for printing JSON and JSONP nicely when you visit it 'directly' in a browser tab.
 
